@@ -12,7 +12,9 @@ async function initPool() {
     const sshOptions = {
       host: process.env.SSH_TUNNEL_HOST,
       username: process.env.SSH_TUNNEL_USER,
-      privateKey: process.env.SSH_TUNNEL_PRIVATE_KEY_B64 ? Buffer.from(process.env.SSH_TUNNEL_PRIVATE_KEY_B64, 'base64').toString('utf8') : process.env.SSH_TUNNEL_PRIVATE_KEY
+      privateKey: process.env.SSH_TUNNEL_PRIVATE_KEY_B64 ? Buffer.from(process.env.SSH_TUNNEL_PRIVATE_KEY_B64, 'base64').toString('utf8') : process.env.SSH_TUNNEL_PRIVATE_KEY,
+    readyTimeout: 60000,
+    keepaliveInterval: 10000
     }
     const forwardOptions = {
       srcAddr: '127.0.0.1',
