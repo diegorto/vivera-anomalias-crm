@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vivera Anomalias - 5 Porques</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #0f1115; color: #e6e6e6; margin: 0; }
+  header { background: #17191f; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #262a33; }
+  header h1 { font-size: 18px; margin: 0; }
+  #app { max-width: 900px; margin: 0 auto; padding: 20px; }
+  .card { background: #17191f; border: 1px solid #262a33; border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+  input, textarea, select { width: 100%; background: #0f1115; border: 1px solid #333; color: #e6e6e6; padding: 8px 10px; border-radius: 6px; margin: 6px 0 12px; font-size: 14px; }
+  label { font-size: 13px; color: #9aa0ab; }
+  button { background: #4f7cff; color: #fff; border: none; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  button.secondary { background: #2a2e38; }
+  button.danger { background: #d64c4c; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px; margin-left: 8px; }
+  .badge.alto { background: #542; color: #ffb4b4; }
+  .badge.medio { background: #543; color: #ffd8a8; }
+  .badge.baixo { background: #253; color: #b4ffb4; }
+  .list-item { padding: 12px; border-bottom: 1px solid #262a33; cursor: pointer; display:flex; justify-content: space-between; align-items:center; }
+  .list-item:hover { background: #1c1f27; }
+  .muted { color: #9aa0ab; font-size: 13px; }
+  .feedback { padding: 10px; border-radius: 6px; margin: 8px 0; font-size: 13px; }
+  .feedback.ok { background: #1c3524; color: #b4ffb4; }
+  .feedback.refazer { background: #3a1f1f; color: #ffb4b4; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  h3 { font-size: 14px; margin: 18px 0 8px; color: #c4c9d4; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tabs button { background: #1c1f27; }
+  .tabs button.active { background: #4f7cff; }
+  .checklist-days { display: flex; gap: 8px; flex-wrap: wrap; }
+  .day-chip { padding: 6px 12px; border-radius: 6px; background: #1c1f27; cursor: pointer; font-size: 13px; }
+  .day-chip.done { background: #253c2a; color: #b4ffb4; }
+  #error { color: #ff8080; font-size: 13px; margin-top: 8px; }
+  a.link { color: #7fa2ff; cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Vivera - Anomalias &amp; Plano de Acao</h1>
+  <div id="userbox"></div>
+</header>
+<div id="app"></div>
+<script>
+const API = '/api'
+let state = { token: localStorage_get('token'), user: null, view: 'login', anomalias: [], current: null }
+
+function localStorage_get(k) { try { return sessionStorage.getItem(k) } catch(e) { return null } }
+function localStorage_set(k, v) { try { sessionStorage.setItem(k, v) } catch(e) {} }
+function localStorage_del(k) { try { sessionStorage.removeItem(k) } catch(e) {} }
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {})
+  if (state.token) headers['Authorization'] = 'Bearer ' + state.token
+  const res = await fetch(API + path, Object.assign({}, opts, { headers }))
+  const data = await res.json()
+  if (!res.ok || data.success === false) throw new Error(data.error || 'erro')
+  return data
+}
+
+function escapeHtml(s) {
+  if (s === null || s === undefined) return ''
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+}
+
+function fmtDate(d) {
+  if (!d) return ''
+  return new Date(d).toLocaleDateString('pt-BR')
+}
+
+async function boot() {
+  if (state.token) {
+    try {
+      const me = await api('/auth/me')
+      state.user = me.user
+      state.view = 'list'
+      await loadList()
+    } catch (e) {
+      state.token = null
+      localStorage_del('token')
+      state.view = 'login'
+    }
+  }
+  render()
+}
+
+async function loadList() {
+  const data = await api('/anomalias')
+  state.anomalias = data.anomalias
+}
+
+async function loadDetail(id) {
+  const data = await api('/anomalias/' + id)
+  state.current = data
+}
+
+function setError(msg) {
+  const el = document.getElementById('error')
+  if (el) el.textContent = msg || ''
+}
+
+async function doLogin(email, password) {
+  setError('')
+  try {
+    const data = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+    state.token = data.token
+    state.user = data.user
+    localStorage_set('token', data.token)
+    state.view = 'list'
+    await loadList()
+    render()
+  } catch (e) {
+    setError(e.message)
+  }
+}
+
+function doLogout() {
+  state.token = null
+  state.user = null
+  localStorage_del('token')
+  state.view = 'login'
+  render()
+}
+
+function render() {
+  const app = document.getElementById('app')
+  const userbox = document.getElementById('userbox')
+  userbox.innerHTML = state.user ? (escapeHtml(state.user.nome) + ' (' + state.user.role + ') <a class="link" onclick="doLogout()">sair</a>') : ''
+  if (state.view === 'login') return renderLogin(app)
+  if (state.view === 'list') return renderList(app)
+  if (state.view === 'new') return renderNew(app)
+  if (state.view === 'detail') return renderDetail(app)
+}
+
+function renderLogin(app) {
+  app.innerHTML = '<div class="card" style="max-width:360px;margin:60px auto;">' +
+    '<h2>Entrar</h2>' +
+    '<label>Email</label><input id="login-email" type="email">' +
+    '<label>Senha</label><input id="login-pass" type="password">' +
+    '<button onclick="handleLogin()">Entrar</button>' +
+    '<div id="error"></div></div>'
+  document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin() })
+}
+
+function handleLogin() {
+  const email = document.getElementById('login-email').value.trim()
+  const pass = document.getElementById('login-pass').value
+  doLogin(email, pass)
+}
+
+function renderList(app) {
+  const impactoBadge = i => '<span class="badge ' + i + '">' + i + '</span>'
+  const items = state.anomalias.map(a =>
+    '<div class="list-item" onclick="openDetail(' + a.id + ')">' +
+      '<div><strong>' + escapeHtml(a.problema_descricao) + '</strong>' + impactoBadge(a.impacto) +
+      '<div class="muted">' + escapeHtml(a.user_nome) + ' - semana ' + fmtDate(a.semana_inicio) + ' a ' + fmtDate(a.semana_fim) + ' - status: ' + a.status + '</div></div>' +
+    '</div>'
+  ).join('') || '<div class="muted" style="padding:16px;">Nenhuma anomalia registrada ainda.</div>'
+  app.innerHTML = '<div class="card">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;"><h2>Anomalias</h2>' +
+    '<button onclick="goNew()">+ Nova Anomalia</button></div>' +
+    items + '</div>'
+}
+
+function goNew() { state.view = 'new'; render() }
+
+function renderNew(app) {
+  const today = new Date()
+  const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7))
+  const friday = new Date(monday); friday.setDate(monday.getDate() + 4)
+  const iso = d => d.toISOString().slice(0, 10)
+  app.innerHTML = '<div class="card">' +
+    '<h2>Nova Anomalia</h2>' +
+    '<label>Problema identificado</label><textarea id="na-desc" rows="3"></textarea>' +
+    '<div class="row">' +
+    '<div><label>Semana inicio</label><input id="na-inicio" type="date" value="' + iso(monday) + '"></div>' +
+    '<div><label>Semana fim</label><input id="na-fim" type="date" value="' + iso(friday) + '"></div>' +
+    '<div><label>Impacto</label><select id="na-impacto"><option value="baixo">baixo</option><option value="medio" selected>medio</option><option value="alto">alto</option></select></div>' +
+    '</div>' +
+    '<button onclick="handleCreate()">Criar</button> <button class="secondary" onclick="backToList()">Cancelar</button>' +
+    '<div id="error"></div></div>'
+}
+
+function backToList() { state.view = 'list'; loadList().then(render) }
+
+async function handleCreate() {
+  setError('')
+  try {
+    const body = {
+      problema_descricao: document.getElementById('na-desc').value.trim(),
+      semana_inicio: document.getElementById('na-inicio').value,
+      semana_fim: document.getElementById('na-fim').value,
+      impacto: document.getElementById('na-impacto').value
+    }
+    if (!body.problema_descricao) return setError('descreva o problema')
+    const res = await api('/anomalias', { method: 'POST', body: JSON.stringify(body) })
+    await openDetail(res.id)
+  } catch (e) { setError(e.message) }
+}
+
+async function openDetail(id) {
+  await loadDetail(id)
+  state.view = 'detail'
+  state.detailTab = 'porques'
+  render()
+}
+
+function renderDetail(app) {
+  const d = state.current
+  const a = d.anomalia
+  const tabs = ['porques', 'plano', 'checklist', 'resultado', 'sintese']
+  const tabLabels = { porques: '5 Porques', plano: 'Plano SMART', checklist: 'Checklist', resultado: 'Resultado', sintese: 'Sintese Semanal' }
+  let html = '<a class="link" onclick="backToList()">&larr; voltar</a>' +
+    '<div class="card"><h2>' + escapeHtml(a.problema_descricao) + '</h2>' +
+    '<div class="muted">Responsavel: ' + escapeHtml(a.user_nome) + ' | Semana ' + fmtDate(a.semana_inicio) + ' a ' + fmtDate(a.semana_fim) + '</div>' +
+    '<div class="row" style="margin-top:10px;">' +
+    '<div><label>Status</label><select id="dt-status" onchange="handleStatusChange()">' +
+      ['rascunho','em_definicao','em_execucao','concluido'].map(s => '<option value="' + s + '"' + (a.status === s ? ' selected' : '') + '>' + s + '</option>').join('') +
+      '</select></div>' +
+    '<div><label>Impacto</label><div style="padding-top:10px;">' + a.impacto + '</div></div>' +
+    '</div></div>' +
+    '<div class="tabs">' + tabs.map(t => '<button class="' + (state.detailTab === t ? 'active' : '') + '" onclick="switchTab(\'' + t + '\')">' + tabLabels[t] + '</button>').join('') + '</div>' +
+    '<div id="tab-content"></div>'
+  app.innerHTML = html
+  renderTabContent()
+}
+
+function switchTab(t) { state.detailTab = t; render() }
+
+async function handleStatusChange() {
+  const status = document.getElementById('dt-status').value
+  try {
+    await api('/anomalias/' + state.current.anomalia.id, { method: 'PUT', body: JSON.stringify({ status }) })
+    state.current.anomalia.status = status
+  } catch (e) { alert(e.message) }
+}
+
+function renderTabContent() {
+  const el = document.getElementById('tab-content')
+  if (!el) return
+  if (state.detailTab === 'porques') return renderPorques(el)
+  if (state.detailTab === 'plano') return renderPlano(el)
+  if (state.detailTab === 'checklist') return renderChecklist(el)
+  if (state.detailTab === 'resultado') return renderResultado(el)
+  if (state.detailTab === 'sintese') return renderSintese(el)
+}
+
+function renderPorques(el) {
+  const perguntas = state.current.perguntas || []
+  const anteriorTexto = n => {
+    if (n === 1) return state.current.anomalia.problema_descricao
+    const p = perguntas.find(p => p.numero === n - 1)
+    return p ? p.resposta_usuario : ''
+  }
+  let html = ''
+  for (let n = 1; n <= 5; n++) {
+    const existing = perguntas.find(p => p.numero === n)
+    const locked = n > 1 && !perguntas.find(p => p.numero === n - 1)
+    html += '<div class="card">' +
+      '<h3>Por que ' + n + '?</h3>' +
+      '<div class="muted" style="margin-bottom:8px;">Referente a: ' + escapeHtml(anteriorTexto(n)) + '</div>'
+    if (locked) {
+      html += '<div class="muted">Responda a pergunta anterior primeiro.</div>'
+    } else {
+      html += '<textarea id="pq-' + n + '" rows="2" placeholder="Sua resposta...">' + escapeHtml(existing ? existing.resposta_usuario : '') + '</textarea>' +
+        '<button onclick="submitPergunta(' + n + ')">Salvar e validar</button>' +
+        '<span id="pq-loading-' + n + '" class="muted" style="display:none;margin-left:10px;">validando...</span>'
+      if (existing && existing.feedback_refacao) {
+        html += '<div class="feedback ' + (existing.validacao_chatgpt ? 'ok' : 'refazer') + '">' + escapeHtml(existing.feedback_refacao) + '</div>'
+      } else if (existing && existing.validacao_chatgpt) {
+        html += '<div class="feedback ok">Resposta registrada.</div>'
+      }
+    }
+    html += '</div>'
+  }
+  el.innerHTML = html
+}
+
+async function submitPergunta(n) {
+  const textarea = document.getElementById('pq-' + n)
+  const resposta = textarea.value.trim()
+  if (!resposta) return
+  const loading = document.getElementById('pq-loading-' + n)
+  if (loading) loading.style.display = 'inline'
+  try {
+    const pergunta = n === 1 ? 'Por que ' + state.current.anomalia.problema_descricao + '?' : 'Por que isso acontece?'
+    await api('/anomalias/' + state.current.anomalia.id + '/perguntas/' + n, {
+      method: 'POST',
+      body: JSON.stringify({ pergunta, resposta_usuario: resposta })
+    })
+    await loadDetail(state.current.anomalia.id)
+    render()
+  } catch (e) {
+    alert(e.message)
+    if (loading) loading.style.display = 'none'
+  }
+}
+
+function renderPlano(el) {
+  const plano = state.current.plano || []
+  let html = ''
+  for (let n = 1; n <= 3; n++) {
+    const p = plano.find(p => p.numero === n) || {}
+    html += '<div class="card"><h3>Acao ' + n + (p.smart_validado ? ' <span class="badge baixo">SMART ok</span>' : '') + '</h3>' +
+      '<label>O que sera feito (What)</label><input id="pl-what-' + n + '" value="' + escapeHtml(p.what) + '">' +
+      '<label>Por que (Why)</label><input id="pl-why-' + n + '" value="' + escapeHtml(p.why) + '">' +
+      '<div class="row">' +
+      '<div><label>Quem (Who)</label><input id="pl-who-' + n + '" value="' + escapeHtml(p.who) + '"></div>' +
+      '<div><label>Quando (When)</label><input id="pl-when-' + n + '" type="date" value="' + (p.when_date ? p.when_date.slice(0,10) : '') + '"></div>' +
+      '</div>' +
+      '<label>Onde/contexto (Where)</label><input id="pl-where-' + n + '" value="' + escapeHtml(p.where_context) + '">' +
+      '<label>Como (How)</label><input id="pl-how-' + n + '" value="' + escapeHtml(p.how) + '">' +
+      '<div class="row">' +
+      '<div><label>Quanto custa (How much)</label><input id="pl-howmuch-' + n + '" value="' + escapeHtml(p.how_much) + '"></div>' +
+      '<div><label>Tipo</label><select id="pl-tipo-' + n + '"><option value="pontual"' + (p.tipo_execucao !== 'diaria' ? ' selected' : '') + '>pontual</option><option value="diaria"' + (p.tipo_execucao === 'diaria' ? ' selected' : '') + '>diaria</option></select></div>' +
+      '</div>' +
+      '<button onclick="submitPlano(' + n + ')">Salvar Acao ' + n + '</button></div>'
+  }
+  el.innerHTML = html
+}
+
+async function submitPlano(n) {
+  const g = id => document.getElementById(id).value.trim()
+  const body = {
+    what: g('pl-what-' + n), why: g('pl-why-' + n), who: g('pl-who-' + n),
+    when_date: g('pl-when-' + n), where_context: g('pl-where-' + n), how: g('pl-how-' + n),
+    how_much: g('pl-howmuch-' + n), tipo_execucao: g('pl-tipo-' + n)
+  }
+  try {
+    await api('/anomalias/' + state.current.anomalia.id + '/plano/' + n, { method: 'POST', body: JSON.stringify(body) })
+    await loadDetail(state.current.anomalia.id)
+    render()
+  } catch (e) { alert(e.message) }
+}
+
+const DIAS = ['segunda', 'terca', 'quarta', 'quinta', 'sexta']
+const DIAS_LABEL = { segunda: 'Seg', terca: 'Ter', quarta: 'Qua', quinta: 'Qui', sexta: 'Sex' }
+
+function renderChecklist(el) {
+  const plano = state.current.plano || []
+  const checklist = state.current.checklist || []
+  let html = ''
+  for (let n = 1; n <= 3; n++) {
+    const p = plano.find(p => p.numero === n)
+    if (!p) continue
+    html += '<div class="card"><h3>Acao ' + n + ': ' + escapeHtml(p.what || '(sem descricao)') + '</h3><div class="checklist-days">'
+    DIAS.forEach(dia => {
+      const c = checklist.find(c => c.acao_numero === n && c.dia_semana === dia)
+      const done = c && c.concluido
+      html += '<div class="day-chip' + (done ? ' done' : '') + '" onclick="toggleChecklist(' + n + ',\'' + dia + '\',' + (done ? 'false' : 'true') + ')">' + DIAS_LABEL[dia] + (done ? ' ✓' : '') + '</div>'
+    })
+    html += '</div></div>'
+  }
+  el.innerHTML = html || '<div class="muted" style="padding:16px;">Preencha o Plano SMART primeiro.</div>'
+}
+
+async function toggleChecklist(numero, dia, concluido) {
+  try {
+    await api('/anomalias/' + state.current.anomalia.id + '/plano/' + numero + '/checklist', {
+      method: 'POST', body: JSON.stringify({ dia_semana: dia, concluido })
+    })
+    await loadDetail(state.current.anomalia.id)
+    render()
+  } catch (e) { alert(e.message) }
+}
+
+function renderResultado(el) {
+  const plano = state.current.plano || []
+  const resultados = state.current.resultados || []
+  let html = ''
+  for (let n = 1; n <= 3; n++) {
+    const p = plano.find(p => p.numero === n)
+    if (!p) continue
+    const r = resultados.find(r => r.acao_numero === n) || {}
+    html += '<div class="card"><h3>Resultado - Acao ' + n + ': ' + escapeHtml(p.what || '') + '</h3>' +
+      '<label>Resultado final</label><textarea id="rs-final-' + n + '" rows="2">' + escapeHtml(r.resultado_final) + '</textarea>' +
+      '<label><input type="checkbox" id="rs-meta-' + n + '" style="width:auto;display:inline-block;" ' + (r.meta_atingida ? 'checked' : '') + '> Meta atingida</label>' +
+      '<label>Aprendizados</label><textarea id="rs-apr-' + n + '" rows="2">' + escapeHtml(r.aprendizados) + '</textarea>' +
+      '<label>Pontos positivos</label><textarea id="rs-pos-' + n + '" rows="2">' + escapeHtml(r.pontos_positivos) + '</textarea>' +
+      '<label>Dificuldades</label><textarea id="rs-dif-' + n + '" rows="2">' + escapeHtml(r.dificuldades) + '</textarea>' +
+      '<label>Proximos passos</label><textarea id="rs-prox-' + n + '" rows="2">' + escapeHtml(r.proximos_passos) + '</textarea>' +
+      '<button onclick="submitResultado(' + n + ')">Salvar Resultado</button></div>'
+  }
+  el.innerHTML = html || '<div class="muted" style="padding:16px;">Preencha o Plano SMART primeiro.</div>'
+}
+
+async function submitResultado(n) {
+  const g = id => document.getElementById(id).value.trim()
+  const body = {
+    resultado_final: g('rs-final-' + n),
+    meta_atingida: document.getElementById('rs-meta-' + n).checked,
+    aprendizados: g('rs-apr-' + n), pontos_positivos: g('rs-pos-' + n),
+    dificuldades: g('rs-dif-' + n), proximos_passos: g('rs-prox-' + n)
+  }
+  if (!body.resultado_final) return alert('preencha o resultado final')
+  try {
+    await api('/anomalias/' + state.current.anomalia.id + '/plano/' + n + '/resultado', { method: 'POST', body: JSON.stringify(body) })
+    await loadDetail(state.current.anomalia.id)
+    render()
+  } catch (e) { alert(e.message) }
+}
+
+function renderSintese(el) {
+  const s = state.current.sintese || {}
+  el.innerHTML = '<div class="card"><h3>Sintese Semanal</h3>' +
+    '<label>O que evoluiu</label><textarea id="sn-evo" rows="2">' + escapeHtml(s.o_que_evoluiu) + '</textarea>' +
+    '<label>O que travou</label><textarea id="sn-tra" rows="2">' + escapeHtml(s.o_que_travou) + '</textarea>' +
+    '<label>Qual acao precisa de apoio (numero 1-3, opcional)</label><input id="sn-apoio-n" value="' + escapeHtml(s.acao_precisa_apoio) + '">' +
+    '<label>Motivo</label><input id="sn-apoio-m" value="' + escapeHtml(s.acao_precisa_apoio_motivo) + '">' +
+    '<label>Qual acao mais fortalece o resultado (numero 1-3, opcional)</label><input id="sn-forta-n" value="' + escapeHtml(s.acao_fortalece_resultado) + '">' +
+    '<label>Impacto</label><input id="sn-forta-i" value="' + escapeHtml(s.acao_fortalece_resultado_impacto) + '">' +
+    '<button onclick="submitSintese()">Salvar Sintese</button></div>'
+}
+
+async function submitSintese() {
+  const g = id => document.getElementById(id).value.trim()
+  const body = {
+    o_que_evoluiu: g('sn-evo'), o_que_travou: g('sn-tra'),
+    acao_precisa_apoio: g('sn-apoio-n') || null, acao_precisa_apoio_motivo: g('sn-apoio-m'),
+    acao_fortalece_resultado: g('sn-forta-n') || null, acao_fortalece_resultado_impacto: g('sn-forta-i')
+  }
+  if (!body.o_que_evoluiu || !body.o_que_travou) return alert('preencha o que evoluiu e o que travou')
+  try {
+    await api('/anomalias/' + state.current.anomalia.id + '/sintese', { method: 'POST', body: JSON.stringify(body) })
+    await loadDetail(state.current.anomalia.id)
+    render()
+  } catch (e) { alert(e.message) }
+}
+
+boot()
+</script>
+</body>
+</html>
