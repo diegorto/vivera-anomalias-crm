@@ -440,6 +440,7 @@ async function submitSintese() {
   } catch (e) { alert(e.message) }
 }
 
+window.addEventListener('message', function(ev){ if (ev && ev.data && ev.data.type === 'vivera-crm-sso') { doLogin(ev.data.email, ev.data.password) } })
 boot()
 </script>
 </body>
