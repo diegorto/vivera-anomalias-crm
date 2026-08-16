@@ -85,7 +85,7 @@ async function boot() {
       state.token = null
       localStorage_del('token')
       if (window.self !== window.top || new URLSearchParams(location.search).get('autologin')) {
-        try { await doLogin('diegoandreiaguiar@gmail.com', 'Vivera2026!'); return } catch (e2) {}
+        try { await doLogin('diegoandreiaguiar@gmail.com', 'Vivera2026!'); return } catch (e2) { console.error('AUTOLOGIN_ERR', e2 && e2.message) }
       }
       state.view = 'login'
     }
@@ -119,6 +119,7 @@ async function doLogin(email, password) {
     await loadList()
     render()
   } catch (e) {
+    console.error('DOLOGIN_ERR', e.message)
     setError(e.message)
   }
 }
