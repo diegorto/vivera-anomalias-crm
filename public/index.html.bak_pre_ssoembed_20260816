@@ -84,9 +84,6 @@ async function boot() {
     } catch (e) {
       state.token = null
       localStorage_del('token')
-      if (window.self !== window.top) {
-        try { await doLogin('diegoandreiaguiar@gmail.com', 'Vivera2026!'); return } catch (e2) {}
-      }
       state.view = 'login'
     }
   }
