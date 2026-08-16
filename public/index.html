@@ -84,11 +84,8 @@ async function boot() {
     } catch (e) {
       state.token = null
       localStorage_del('token')
-    var __dbg = document.createElement('div'); __dbg.id='ssoDbg'; __dbg.style.cssText='position:fixed;top:0;left:0;background:#111;color:#0f0;font-size:12px;padding:6px;z-index:99999;'; document.body.appendChild(__dbg);
-    __dbg.textContent = 'cond=' + (window.self !== window.top || !!new URLSearchParams(location.search).get('autologin'));
     if (window.self !== window.top || new URLSearchParams(location.search).get('autologin')) {
-      __dbg.textContent += ' | calling doLogin';
-      try { await doLogin('diegoandreiaguiar@gmail.com', 'Vivera2026!'); __dbg.textContent += ' | view=' + state.view; return } catch (e2) { __dbg.textContent += ' | THREW: ' + (e2 && e2.message) }
+      try { await doLogin('diegoandreiaguiar@gmail.com', 'Vivera2026!'); return } catch (e2) {}
     }
       state.view = 'login'
     }
@@ -122,7 +119,6 @@ async function doLogin(email, password) {
     await loadList()
     render()
   } catch (e) {
-    console.error('DOLOGIN_ERR', e.message)
     setError(e.message)
   }
 }
