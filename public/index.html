@@ -84,9 +84,6 @@ async function boot() {
     } catch (e) {
       state.token = null
       localStorage_del('token')
-    if (window.self !== window.top || new URLSearchParams(location.search).get('autologin')) {
-      try { await doLogin('diegoandreiaguiar@gmail.com', 'Vivera2026!'); return } catch (e2) {}
-    }
       state.view = 'login'
     }
   }
@@ -436,7 +433,29 @@ async function submitSintese() {
   } catch (e) { alert(e.message) }
 }
 
-window.addEventListener('message', function(ev){ if (ev && ev.data && ev.data.type === 'vivera-crm-sso') { doLogin(ev.data.email, ev.data.password) } })
+window.addEventListener('message', function(ev){
+  if (!ev || !ev.data) return
+  if (ev.data.type === 'vivera-crm-sso-token' && ev.data.token) {
+    state.token = ev.data.token
+    localStorage_set('token', ev.data.token)
+    ;(async function(){
+      try {
+        const me = await api('/auth/me')
+        state.user = me.user
+        state.view = 'list'
+        await loadList()
+        render()
+      } catch (e) {
+        state.token = null
+        localStorage_del('token')
+        state.view = 'login'
+        render()
+      }
+    })()
+  } else if (ev.data.type === 'vivera-crm-sso') {
+    doLogin(ev.data.email, ev.data.password)
+  }
+})
 boot()
 </script>
 </body>
